@@ -5,8 +5,8 @@ import java.util.UUID;
 
 public class MoveOrchestrationActivitiesImpl implements MoveOrchestrationActivities {
   @Override
-  public void validateInput(String input) {
-    System.out.println("Validate input '" + input + "'");
+  public void validateInput(MoveRequest request) {
+    System.out.println("Validate Move Request '" + request + "'");
   }
 
   @Override
@@ -27,10 +27,15 @@ public class MoveOrchestrationActivitiesImpl implements MoveOrchestrationActivit
 
   @Override
   public Void increaseLockTimeOut(String lockId, long lockTime, long interval) {
+    int i = 0;
     try {
       while (true) {
-        System.out.println("Increase lock (lockId=" + lockId + ") time-out by " + lockTime + "ms");
         Activity.heartbeat("ping");
+        if (i % 6 == 0) {
+          System.out.println(
+              "Increase lock (lockId=" + lockId + ") time-out by " + lockTime + "ms");
+        }
+        i++;
         Thread.sleep(interval);
       }
     } catch (InterruptedException e) {

@@ -6,7 +6,7 @@ import com.uber.cadence.common.MethodRetry;
 public interface MoveOrchestrationActivities {
 
   @ActivityMethod
-  void validateInput(String input);
+  void validateInput(MoveRequest request);
 
   @ActivityMethod
   String acquireLock(String sourceId);
@@ -14,10 +14,10 @@ public interface MoveOrchestrationActivities {
   @ActivityMethod
   void releaseLock(String lockId);
 
-  @ActivityMethod(heartbeatTimeoutSeconds = 3)
+  @ActivityMethod(heartbeatTimeoutSeconds = 2)
   @MethodRetry(
     initialIntervalSeconds = 1,
-    backoffCoefficient = 2,
+    backoffCoefficient = 1,
     maximumIntervalSeconds = 60,
     expirationSeconds = 300,
     maximumAttempts = 5

@@ -25,49 +25,57 @@ public class MoveOrchestrationWorkflowImpl implements MoveOrchestrationWorkflow 
   //      Workflow.newLocalActivityStub(MoveOrchestrationActivities.class, localOptions);
 
   List<String> messageQueue = new ArrayList<>(10);
-  Status status = Status.IN_PROGRESS;
+  String progress = "INITIATED";
 
   @Override
-  public void move(String input) {
+  public void move(MoveRequest request) {
     // Configure SAGA to run compensation activities in parallel
     Saga.Options sagaOptions = new Saga.Options.Builder().setParallelCompensation(true).build();
     Saga saga = new Saga(sagaOptions);
-    try {
 
-      activities.validateInput(input);
-      String lockId = activities.acquireLock(input);
+    try {
+      appendStatus("VALIDATING_INPUT");
+      activities.validateInput(request);
+
+      appendStatus("ACQUIRING_LOCK_ON_SOURCE");
+      String lockId = activities.acquireLock(request.getSourceId());
       saga.addCompensation(activities::releaseLock, lockId);
 
       CancellationScope longRunningCancellationScope =
           Workflow.newCancellationScope(
-              () -> Async.function(activities::increaseLockTimeOut, lockId, 100L, 800L));
+              () -> Async.function(activities::increaseLockTimeOut, lockId, 500L, 100L));
       longRunningCancellationScope.run();
       saga.addCompensation((Functions.Proc) longRunningCancellationScope::cancel);
 
       activities.triggerCreateReplicaEvent(Workflow.getWorkflowInfo().getWorkflowId());
-      saga.addCompensation(activities::deletePassiveTarget, input);
+      saga.addCompensation(activities::deletePassiveTarget, request.getTargetId());
+      appendStatus("CREATING_REPLICA");
 
       while (true) {
         System.out.println("Waiting for create replica response...");
         Workflow.await(() -> !messageQueue.isEmpty());
         String message = messageQueue.remove(0);
         System.out.println("Create replica response: " + message);
-        Status status = Status.valueOf(message);
-        if (Status.FAILED.equals(status)) {
+        if ("FAILED".equals(message)) {
+          appendStatus("CREATE_REPLICA_FAILED");
           throw new RuntimeException("Creating replica failed");
-        } else if (Status.SUCCESS.equals(status)) {
+        } else if ("SUCCESS".equals(message)) {
+          appendStatus("REPLICA_IN_SYNC");
           break;
         }
       }
 
-      activities.markSourceToPassive(input);
-      saga.addCompensation(activities::markSourceToActive, input);
+      activities.markSourceToPassive(request.getSourceId());
+      saga.addCompensation(activities::markSourceToActive, request.getSourceId());
 
       longRunningCancellationScope.cancel();
+      activities.releaseLock(lockId);
 
-      activities.markTargetToActive(input);
+      appendStatus("MARKING_TARGET_TO_ACTIVE");
+      activities.markTargetToActive(request.getTargetId());
 
-      activities.deletePassiveSource(input);
+      appendStatus("SUCCESS");
+      activities.deletePassiveSource(request.getSourceId());
 
     } catch (Exception e) {
       saga.compensate();
@@ -81,6 +89,10 @@ public class MoveOrchestrationWorkflowImpl implements MoveOrchestrationWorkflow 
 
   @Override
   public String queryProgress() {
-    return status.toString();
+    return progress.toString();
+  }
+
+  void appendStatus(String status) {
+    this.progress = this.progress + "  ->  " + status;
   }
 }

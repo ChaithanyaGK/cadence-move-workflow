@@ -9,7 +9,7 @@ import com.uber.cadence.workflow.WorkflowMethod;
 public interface MoveOrchestrationWorkflow {
 
   @WorkflowMethod(executionStartToCloseTimeoutSeconds = 3600, taskList = TASK_LIST)
-  void move(String input);
+  void move(MoveRequest request);
 
   /** Receives replication status through an external signal. */
   @SignalMethod

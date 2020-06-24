@@ -25,7 +25,6 @@
 package com.cadence.samples.move;
 
 import com.uber.cadence.activity.ActivityOptions;
-import com.uber.cadence.activity.LocalActivityOptions;
 import com.uber.cadence.workflow.Async;
 import com.uber.cadence.workflow.CancellationScope;
 import com.uber.cadence.workflow.Functions;
@@ -39,20 +38,14 @@ public class MoveOrchestrationWorkflowImpl implements MoveOrchestrationWorkflow 
   private final ActivityOptions options =
       new ActivityOptions.Builder().setScheduleToCloseTimeout(Duration.ofHours(1)).build();
 
-  private final LocalActivityOptions localOptions =
-      new LocalActivityOptions.Builder().setScheduleToCloseTimeout(Duration.ofHours(1)).build();
-
   private final MoveOrchestrationActivities activities =
       Workflow.newActivityStub(MoveOrchestrationActivities.class, options);
-
-  //  private final MoveOrchestrationActivities activities =
-  //      Workflow.newLocalActivityStub(MoveOrchestrationActivities.class, localOptions);
 
   List<String> messageQueue = new ArrayList<>(10);
   String progress = "INITIATED";
 
   @Override
-  public void move(MoveRequest request) {
+  public String move(MoveRequest request) {
     // Configure SAGA to run compensation activities in parallel
     Saga.Options sagaOptions = new Saga.Options.Builder().setParallelCompensation(true).build();
     Saga saga = new Saga(sagaOptions);
@@ -71,9 +64,9 @@ public class MoveOrchestrationWorkflowImpl implements MoveOrchestrationWorkflow 
       longRunningCancellationScope.run();
       saga.addCompensation((Functions.Proc) longRunningCancellationScope::cancel);
 
+      appendStatus("CREATING_REPLICA");
       activities.triggerCreateReplicaEvent(Workflow.getWorkflowInfo().getWorkflowId());
       saga.addCompensation(activities::deletePassiveTarget, request.getTargetId());
-      appendStatus("CREATING_REPLICA");
 
       while (true) {
         System.out.println("Waiting for create replica response...");
@@ -89,6 +82,7 @@ public class MoveOrchestrationWorkflowImpl implements MoveOrchestrationWorkflow 
         }
       }
 
+      appendStatus("MARKING_SOURCE_TO_ACTIVE");
       activities.markSourceToPassive(request.getSourceId());
       saga.addCompensation(activities::markSourceToActive, request.getSourceId());
 
@@ -101,8 +95,15 @@ public class MoveOrchestrationWorkflowImpl implements MoveOrchestrationWorkflow 
       appendStatus("SUCCESS");
       activities.deletePassiveSource(request.getSourceId());
 
+      return String.format(
+          "Moved Source(id=%s) to Target(id=%s) successfully",
+          request.getSourceId(), request.getTargetId());
+
     } catch (Exception e) {
       saga.compensate();
+      return String.format(
+          "Failed to Move Source(id=%s) to Target(id=%s)",
+          request.getSourceId(), request.getTargetId());
     }
   }
 

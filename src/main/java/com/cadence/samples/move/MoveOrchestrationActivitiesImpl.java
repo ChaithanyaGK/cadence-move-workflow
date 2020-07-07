@@ -55,7 +55,7 @@ public class MoveOrchestrationActivitiesImpl implements MoveOrchestrationActivit
     try {
       while (true) {
         Activity.heartbeat("ping");
-        if (i % 6 == 0) {
+        if (i % 20 == 0) {
           System.out.println(
               "Increase lock (lockId=" + lockId + ") time-out by " + lockTime + "ms");
         }

@@ -49,6 +49,7 @@ public class MoveOrchestrationWorkflowImpl implements MoveOrchestrationWorkflow 
     // Configure SAGA to run compensation activities in parallel
     Saga.Options sagaOptions = new Saga.Options.Builder().setParallelCompensation(true).build();
     Saga saga = new Saga(sagaOptions);
+    String result;
 
     try {
       appendStatus("VALIDATING_INPUT");
@@ -60,7 +61,7 @@ public class MoveOrchestrationWorkflowImpl implements MoveOrchestrationWorkflow 
 
       CancellationScope longRunningCancellationScope =
           Workflow.newCancellationScope(
-              () -> Async.function(activities::increaseLockTimeOut, lockId, 500L, 100L));
+              () -> Async.function(activities::increaseLockTimeOut, lockId, 2000L, 100L));
       longRunningCancellationScope.run();
       saga.addCompensation((Functions.Proc) longRunningCancellationScope::cancel);
 
@@ -79,6 +80,8 @@ public class MoveOrchestrationWorkflowImpl implements MoveOrchestrationWorkflow 
         } else if ("SUCCESS".equals(message)) {
           appendStatus("REPLICA_IN_SYNC");
           break;
+        } else {
+          appendStatus(message);
         }
       }
 
@@ -95,15 +98,20 @@ public class MoveOrchestrationWorkflowImpl implements MoveOrchestrationWorkflow 
       appendStatus("SUCCESS");
       activities.deletePassiveSource(request.getSourceId());
 
-      return String.format(
-          "Moved Source(id=%s) to Target(id=%s) successfully",
-          request.getSourceId(), request.getTargetId());
+      result =
+          String.format(
+              "Moved Source(id=%s) to Target(id=%s) successfully",
+              request.getSourceId(), request.getTargetId());
+      System.out.println(result);
+      return result;
 
     } catch (Exception e) {
       saga.compensate();
-      return String.format(
-          "Failed to Move Source(id=%s) to Target(id=%s)",
-          request.getSourceId(), request.getTargetId());
+      result =
+          String.format(
+              "Failed to Move Source(id=%s) to Target(id=%s)",
+              request.getSourceId(), request.getTargetId());
+      return result;
     }
   }
 
